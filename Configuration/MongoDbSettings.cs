@@ -1,4 +1,4 @@
-﻿namespace EntityFramework.Configuration
+namespace MovieVault.Configuration
 {
     public class MongoDbSettings
     {

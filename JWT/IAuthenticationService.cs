@@ -1,12 +1,12 @@
-﻿using EntityFramework.Models;
+using MovieVault.Models;
 
-namespace EntityFramework.JWT
+namespace MovieVault.JWT
 {
     public interface IAuthenticationService
     {
-        Task<Tuple<string, DateTime>> LogInAttempts(LogIn logIn);
-        Task<Tuple<string, DateTime>> CreateAccount(Accounts useraccount);
-        Task<bool> LogOutAttempt(string RefreshToken);
-        Task<Tuple<string, DateTime>> GetAccessToken(string RefreshToken);
+        Task<AuthResult> LogInAttempts(LogIn logIn);
+        Task<AuthResult> CreateAccount(Accounts useraccount);
+        Task<bool> LogOutAttempt(string username);
+        Task<AuthResult> RefreshAccessToken(string refreshToken);
     }
 }

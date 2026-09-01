@@ -1,37 +1,30 @@
-using EntityFramework.Configuration;
-using EntityFramework.Context;
-using EntityFramework.Handler;
-using EntityFramework.JWT;
-using EntityFramework.Models;
+using MovieVault.Configuration;
+using MovieVault.Context;
+using MovieVault.Handler;
+using MovieVault.JWT;
+using MovieVault.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using MongoDB.Driver;
 using System.Reflection;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-
-//var mongoClient = new MongoClient("mongodb://localhost:27017");
-//var dbContextOptions =
-//    new DbContextOptionsBuilder<MongoDbContext>().UseMongoDB(mongoClient, "MoviesDB");
-//var db = new MongoDbContext(dbContextOptions.Options);
-
-//builder.Services.AddSingleton(db);
-//builder.Services.AddSingleton<MongoDbContext>(db);
-
-
 // Add services to the container.
-
 builder.Services.AddControllers();
 
-
-var jwtkey = builder.Configuration.GetValue<string>("Jwt:Key");
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    throw new InvalidOperationException(
+        "Jwt:Key is not configured. For local development run " +
+        "'dotnet user-secrets set \"Jwt:Key\" \"<a long random value>\"' from the project folder. " +
+        "For other environments, set it via an environment variable or a secret store. " +
+        "It must never be committed to appsettings.json.");
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -47,17 +40,15 @@ builder.Services.AddAuthentication(options =>
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             ClockSkew = TimeSpan.Zero,
-            //ValidIssuer = "yourdomain.com",
-            //ValidAudience = "yourdomain.com",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtkey))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
         options.Events = new JwtBearerEvents
         {
             OnAuthenticationFailed = context =>
             {
-                if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+                if (context.Exception is SecurityTokenExpiredException)
                 {
-                    context.Response.Headers.Add("Token-Expired", "true");
+                    context.Response.Headers["Token-Expired"] = "true";
                 }
                 return Task.CompletedTask;
             }
@@ -65,67 +56,73 @@ builder.Services.AddAuthentication(options =>
     });
 builder.Services.AddAuthorization();
 
-
-MongoDbSettings mongoDbSettings = builder.Configuration.GetSection(nameof(MongoDbSettings)).Get<MongoDbSettings>();
+var mongoDbSettings = builder.Configuration.GetSection(nameof(MongoDbSettings)).Get<MongoDbSettings>()
+    ?? throw new InvalidOperationException("The MongoDbSettings configuration section is missing.");
 builder.Services.AddSingleton(mongoDbSettings);
 
-builder.Services.AddDbContext<MongoDbContext>(options => options.UseMongoDB(mongoDbSettings.ConnectionString, mongoDbSettings.DatabaseName));
+builder.Services.AddDbContext<MongoDbContext>(options =>
+    options.UseMongoDB(mongoDbSettings.ConnectionString, mongoDbSettings.DatabaseName));
+
 builder.Services.AddScoped<IMoviesHandler, MoviesHandler>();
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    //c.OperationFilter<HeadersFilter>();
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Version = "v1",
-        Title = "CRUD API"
+        Title = "MovieVault API"
     });
+
+    // Only wired up once XML doc comments are actually written on the public members;
+    // skipped quietly otherwise so Swagger generation never breaks on a missing file.
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+    }
     c.CustomSchemaIds(i => i.FullName);
 });
-
-
-
 
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenAnyIP(builder.Configuration.GetValue<int>("Port"));
-
 });
-
 
 var app = builder.Build();
 
-
-/*
-//Create Endpoint
-app.MapPost("movies", async (MongoDbContext dbContext, Movies movie) =>
+if (app.Environment.IsDevelopment())
 {
-    await dbContext.Movies.AddAsync(movie);
-    await dbContext.SaveChangesAsync();
-});
-
-
-//Read Endpoint
-app.MapGet("movies", async (MongoDbContext dbContext) =>
+    app.UseDeveloperExceptionPage();
+}
+else
 {
-    var movies = await dbContext.Movies.ToListAsync();
-    var modifiedMovies = movies.Select(movie => new
+    // Centralized error handling: controllers/services no longer need their own
+    // try/catch-and-swallow blocks, every unhandled exception lands here, gets logged,
+    // and the caller gets a consistent JSON error instead of a stack trace or a silent 200.
+    app.UseExceptionHandler(errorApp =>
     {
-        Id = movie.Id.ToString(),
-        movie.Title,
-        movie.Genre,
-        movie.Rating
+        errorApp.Run(async context =>
+        {
+            var feature = context.Features.Get<IExceptionHandlerFeature>();
+            if (feature?.Error is not null)
+            {
+                var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogError(feature.Error, "Unhandled exception while processing {Path}", context.Request.Path);
+            }
+
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new GlobalResponse
+            {
+                code = 1,
+                message = "An unexpected error occurred."
+            });
+        });
     });
-    return Results.Ok(modifiedMovies);
-});
-*/
-
-
+}
 
 // Configure the HTTP request pipeline.
 app.UseSwagger();

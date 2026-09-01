@@ -1,53 +1,57 @@
-﻿using EntityFramework.Handler;
-using EntityFramework.Models;
+using MovieVault.Handler;
+using MovieVault.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections;
 
-namespace EntityFramework.Controllers
+namespace MovieVault.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/[controller]/[action]")]
     public class MoviesController : ControllerBase
     {
-        private IMoviesHandler _service;
+        private readonly IMoviesHandler _service;
+
         public MoviesController(IMoviesHandler service)
         {
             _service = service;
         }
 
-
-        [Route("AddMovie")]
         [HttpPost]
         [Authorize]
-        public async Task AddMovie(Movies movie)
+        public async Task<IActionResult> AddMovie(Movies movie)
         {
-            await _service.AddMovie(movie);
+            var success = await _service.AddMovie(movie);
+            return success
+                ? Ok(new GlobalResponse { code = 0, message = "Success" })
+                : StatusCode(StatusCodes.Status500InternalServerError, new GlobalResponse { code = 1, message = "Failed to add movie" });
         }
 
-
-        [Route("GetAllMovies")]
         [HttpGet]
         [Authorize]
-        public async Task<IEnumerable> GetAllMovies()
+        public async Task<IActionResult> GetAllMovies()
         {
-            return await _service.GetMovies();
+            var movies = await _service.GetMovies();
+            return Ok(movies);
         }
 
-        [Route("RemoveMovie")]
         [HttpDelete]
         [Authorize]
-        public async Task RemoveMovie([FromHeader] string id)
+        public async Task<IActionResult> RemoveMovie([FromHeader] string id)
         {
-            await _service.RemoveMovie(id);
+            var success = await _service.RemoveMovie(id);
+            return success
+                ? Ok(new GlobalResponse { code = 0, message = "Success" })
+                : NotFound(new GlobalResponse { code = 1, message = "Movie not found" });
         }
 
-        [Route("UpdateMovie")]
         [HttpPut]
         [Authorize]
-        public async Task UpdateMovie([FromHeader] string id, Movies movie)
+        public async Task<IActionResult> UpdateMovie([FromHeader] string id, Movies movie)
         {
-            await _service.UpdateMovie(id, movie);
+            var success = await _service.UpdateMovie(id, movie);
+            return success
+                ? Ok(new GlobalResponse { code = 0, message = "Success" })
+                : NotFound(new GlobalResponse { code = 1, message = "Movie not found" });
         }
     }
 }

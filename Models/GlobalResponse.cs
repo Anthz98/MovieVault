@@ -1,8 +1,8 @@
-﻿namespace EntityFramework.Models
+namespace MovieVault.Models
 {
     public class GlobalResponse
     {
         public int code { get; set; }
-        public string message { get; set; }
+        public string message { get; set; } = string.Empty;
     }
 }

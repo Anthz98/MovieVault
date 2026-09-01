@@ -1,133 +1,118 @@
-﻿using DnsClient;
-using EntityFramework.JWT;
-using EntityFramework.Models;
+using MovieVault.JWT;
+using MovieVault.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 
-namespace EntityFramework.Controllers
+namespace MovieVault.Controllers
 {
     [ApiController]
     [Route("api/[controller]/[action]")]
     public class AccountController : ControllerBase
     {
-        private IAuthenticationService _authbusiness;
-
+        private readonly IAuthenticationService _authbusiness;
 
         public AccountController(IAuthenticationService authbusiness)
         {
             _authbusiness = authbusiness;
         }
 
-
-
-
-
         [HttpPost]
         [AllowAnonymous]
         public async Task<IActionResult> Login(LogIn model)
         {
-            // Authenticate user and generate token
-            var token = await _authbusiness.LogInAttempts(model);
+            var result = await _authbusiness.LogInAttempts(model);
 
-
-            if (token.Item1 == "Invalid")
+            if (!result.Succeeded)
             {
-                //return Unauthorized();
                 return Ok(new GlobalResponse
                 {
                     code = 1,
                     message = "Wrong credentials or account doesn't exist"
                 });
             }
-            else
+
+            SetTokenHeaders(result);
+            return Ok(new GlobalResponse
             {
-               Response.Headers.Add("Token", token.Item1);
-                Response.Headers.Add("TokenExpiry", token.Item2.ToString());
-
-                //return Ok(new { Token = token.Item1 , ExpiryDate = token.Item2 });
-                return Ok(new GlobalResponse
-                {
-                    code = 0,
-                    message = "Success",
-                });
-            }
+                code = 0,
+                message = "Success",
+            });
         }
-
 
         [HttpPost]
         [AllowAnonymous]
         public async Task<IActionResult> AccountCreation(Accounts account)
         {
-            // Authenticate user and generate token
-            var token = await _authbusiness.CreateAccount(account);
+            var result = await _authbusiness.CreateAccount(account);
 
-
-            if (token.Item1 == "Invalid")
+            if (!result.Succeeded)
             {
-                //return Unauthorized();
                 return Ok(new GlobalResponse
                 {
                     code = 1,
                     message = "Account already exists"
                 });
             }
-            else
-            {
-                Response.Headers.Add("Token", token.Item1);
-                Response.Headers.Add("TokenExpiry", token.Item2.ToString());
 
-                //return Ok(new { Token = token.Item1 , ExpiryDate = token.Item2 });
-                return Ok(new GlobalResponse
-                {
-                    code = 0,
-                    message = "Success",
-                });
-            }
+            SetTokenHeaders(result);
+            return Ok(new GlobalResponse
+            {
+                code = 0,
+                message = "Success",
+            });
         }
 
+        // Replaces the old GetAccessToken endpoint. It has to be anonymous and take the
+        // refresh token explicitly in the body: the whole point of a refresh token is to get
+        // a new access token once the old access token has expired, so this endpoint can't
+        // require a still-valid access token (a still-valid [Authorize] Bearer token) to call.
+        [HttpPost]
+        [AllowAnonymous]
+        public async Task<IActionResult> RefreshToken(RefreshTokenRequest model)
+        {
+            var result = await _authbusiness.RefreshAccessToken(model.RefreshToken);
+
+            if (!result.Succeeded)
+            {
+                return Ok(new GlobalResponse { code = 1, message = "Invalid or expired refresh token" });
+            }
+
+            SetTokenHeaders(result);
+            return Ok(new GlobalResponse
+            {
+                code = 0,
+                message = "Success",
+            });
+        }
 
         [HttpGet]
         [Authorize]
         public async Task<IActionResult> LogOut()
         {
-            if (Request.Headers.TryGetValue("Authorization", out var RefreshToken))
+            // The caller already proved who they are via the validated access token
+            // (that's what [Authorize] just checked) — read the username from its claims
+            // instead of re-parsing a header value by hand.
+            var username = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+            if (string.IsNullOrEmpty(username))
             {
-                var IsLoggedOut = await _authbusiness.LogOutAttempt(RefreshToken.FirstOrDefault());
-
-                if (!IsLoggedOut) { return Ok(new GlobalResponse { code = 1, message = "Invalid Token Or User does not exist" }); }
-
-                return Ok(new GlobalResponse
-                {
-                    code = 0,
-                    message = "Success",
-                });
+                return Unauthorized();
             }
-            return Ok(new GlobalResponse { code = 1, message = "Invalid Token Or User does not exist" });
 
+            var isLoggedOut = await _authbusiness.LogOutAttempt(username);
+
+            return Ok(isLoggedOut
+                ? new GlobalResponse { code = 0, message = "Success" }
+                : new GlobalResponse { code = 1, message = "Invalid Token Or User does not exist" });
         }
 
-        [HttpGet]
-        [Authorize]
-        public async Task<IActionResult> GetAccessToken()
+        private void SetTokenHeaders(AuthResult result)
         {
-            if (Request.Headers.TryGetValue("Authorization", out var RefreshToken))
-            {
-                var token = await _authbusiness.GetAccessToken(RefreshToken.FirstOrDefault());
-
-                if (token.Item1 == "Invalid") { return Ok(new GlobalResponse { code = 1, message = "Invalid Token Or User does not exist" }); }
-
-                Response.Headers.Add("Token", token.Item1);
-                Response.Headers.Add("TokenExpiry", token.Item2.ToString());
-
-
-                return Ok(new GlobalResponse
-                {
-                    code = 0,
-                    message = "Success",
-                });
-            }
-            return Ok(new GlobalResponse { code = 1, message = "Invalid Token Or User does not exist" });
-
+            Response.Headers["Token"] = result.AccessToken!;
+            Response.Headers["TokenExpiry"] = result.AccessTokenExpiry!.Value.ToString("O");
+            Response.Headers["RefreshToken"] = result.RefreshToken!;
+            Response.Headers["RefreshTokenExpiry"] = result.RefreshTokenExpiry!.Value.ToString("O");
         }
     }
 }

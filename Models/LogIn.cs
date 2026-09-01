@@ -1,6 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
-namespace EntityFramework.Models
+namespace MovieVault.Models
 {
     public class LogIn
     {

@@ -1,102 +1,78 @@
-﻿using EntityFramework.Context;
-using EntityFramework.Models;
+using MovieVault.Context;
+using MovieVault.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using MongoDB.Bson;
-using MongoDB.Driver;
-using System.Collections;
 
-namespace EntityFramework.Handler
+namespace MovieVault.Handler
 {
     public class MoviesHandler : IMoviesHandler
     {
         private readonly MongoDbContext _context;
+
         public MoviesHandler(MongoDbContext context)
         {
             _context = context;
         }
 
-        public async Task AddMovie(Movies movie)
+        // Exceptions are no longer swallowed here: they bubble up to Program.cs's
+        // global exception handler, which logs them and returns a consistent error
+        // response instead of a silent 200 with an empty body.
+
+        public async Task<bool> AddMovie(Movies movie)
         {
-            try
-            {
-                await _context.Movies.AddAsync(movie);
-                await _context.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-            }
-            return;
+            await _context.Movies.AddAsync(movie);
+            await _context.SaveChangesAsync();
+            return true;
         }
 
-        public async Task<IEnumerable> GetMovies()
+        public async Task<IEnumerable<object>> GetMovies()
         {
-            var movies =  await _context.Movies.ToListAsync();
-            if(movies != null)
+            var movies = await _context.Movies.ToListAsync();
+            return movies.Select(movie => new
             {
-                var modifiedMovies = movies.Select(movie => new
-                {
-                    Id = movie.Id.ToString(),
-                    movie.Title,
-                    movie.Genre,
-                    movie.Rating
-                });
-                return modifiedMovies;
-            }
-            return Enumerable.Empty<object>();
+                Id = movie.Id.ToString(),
+                movie.Title,
+                movie.Genre,
+                movie.Rating
+            });
         }
 
-        public async Task RemoveMovie(string id)
+        public async Task<bool> RemoveMovie(string id)
         {
-            try
+            if (!ObjectId.TryParse(id, out var objectId))
             {
-                if (!ObjectId.TryParse(id, out var objectId))
-                {
-                    return;
-                }
+                return false;
+            }
 
-                var movie = await _context.Movies.FindAsync(objectId);
-                if (movie != null)
-                {
-                    _context.Movies.Remove(movie);
-                    await _context.SaveChangesAsync();
-                }
-            }
-            catch (Exception ex)
+            var movie = await _context.Movies.FindAsync(objectId);
+            if (movie == null)
             {
-                Console.WriteLine(ex.Message);
+                return false;
             }
-            return;
+
+            _context.Movies.Remove(movie);
+            await _context.SaveChangesAsync();
+            return true;
         }
 
-        public async Task UpdateMovie(string id, Movies movie)
+        public async Task<bool> UpdateMovie(string id, Movies movie)
         {
-            try
+            if (!ObjectId.TryParse(id, out var objectId))
             {
-                if (!ObjectId.TryParse(id, out var objectId))
-                {
-                    return;
-                }
-
-                var movieToUpdate = await _context.Movies.FindAsync(objectId);
-                if (movieToUpdate != null)
-                {
-                    movieToUpdate.Title = movie.Title;
-                    movieToUpdate.Genre = movie.Genre;
-                    movieToUpdate.Rating = movie.Rating;
-                    await _context.SaveChangesAsync();
-                }
-
-                //var filter = Builders<Movies>.Filter.Eq(m => m.Title, movie.Title);
-                //var movie = await _context.Movies.Find(filter).FirstOrDefaultAsync();
-                //return movie;
+                return false;
             }
-            catch (Exception ex)
+
+            var movieToUpdate = await _context.Movies.FindAsync(objectId);
+            if (movieToUpdate == null)
             {
-                Console.WriteLine(ex.Message);
+                return false;
             }
-            return;
+
+            movieToUpdate.Title = movie.Title;
+            movieToUpdate.Genre = movie.Genre;
+            movieToUpdate.Rating = movie.Rating;
+            await _context.SaveChangesAsync();
+            return true;
         }
     }
 }

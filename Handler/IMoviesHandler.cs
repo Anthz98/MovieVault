@@ -1,13 +1,12 @@
-﻿using EntityFramework.Models;
-using System.Collections;
+using MovieVault.Models;
 
-namespace EntityFramework.Handler
+namespace MovieVault.Handler
 {
     public interface IMoviesHandler
     {
-        Task AddMovie(Movies movie);
-        Task<IEnumerable> GetMovies();
-        Task RemoveMovie(string id);
-        Task UpdateMovie(string id, Movies movie);
+        Task<bool> AddMovie(Movies movie);
+        Task<IEnumerable<object>> GetMovies();
+        Task<bool> RemoveMovie(string id);
+        Task<bool> UpdateMovie(string id, Movies movie);
     }
 }

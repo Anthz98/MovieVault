@@ -1,10 +1,10 @@
-﻿using EntityFramework.Configuration;
-using EntityFramework.Models;
+using MovieVault.Configuration;
+using MovieVault.Models;
 using Microsoft.EntityFrameworkCore;
 using MongoDB.Driver;
 using MongoDB.EntityFrameworkCore.Extensions;
 
-namespace EntityFramework.Context
+namespace MovieVault.Context
 {
     public class MongoDbContext : DbContext
     {

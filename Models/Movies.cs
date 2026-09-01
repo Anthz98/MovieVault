@@ -1,7 +1,6 @@
-﻿using Amazon.Runtime.Internal.Transform;
 using MongoDB.Bson;
 
-namespace EntityFramework.Models
+namespace MovieVault.Models
 {
     public class Movies
     {
